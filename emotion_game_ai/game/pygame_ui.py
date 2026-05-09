@@ -14,6 +14,7 @@ import pygame
 
 from emotion_game_ai.game.ai_player import decide_move
 from emotion_game_ai.game.board import Board
+from emotion_game_ai.game.search_stats import SearchStats
 from emotion_game_ai.game.renderer import (
     HAPPY_THEME,
     EMOTION_THEMES,
@@ -95,6 +96,8 @@ class PygameApp:
         self.ai_pending_move: Optional[tuple[int, int]] = None
         self.ai_typing = ""
         self.ai_typing_until_s = 0.0
+        self.show_ai_diagnostics = False
+        self.last_ai_search_stats: Optional[SearchStats] = None
 
         self.sfx_move = try_load_sound(os.path.join("assets", "sounds", "move.mp3"))
         self.sfx_win = try_load_sound(os.path.join("assets", "sounds", "win.mp3"))
@@ -134,6 +137,10 @@ class PygameApp:
             if ev.type == pygame.KEYDOWN and ev.key == pygame.K_c:
                 idx = self.shared.request_next_camera()
                 self.shared.set_dialogue(f"Switching camera to index {idx} (press C to cycle).", ttl_s=2.5)
+            if ev.type == pygame.KEYDOWN and ev.key == pygame.K_TAB:
+                self.show_ai_diagnostics = not self.show_ai_diagnostics
+                state = "shown" if self.show_ai_diagnostics else "hidden"
+                self.shared.set_dialogue(f"AI diagnostics {state}.", ttl_s=2.0)
 
             if self.scene == "play":
                 if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
@@ -206,6 +213,7 @@ class PygameApp:
         decision = decide_move(self.board, emotion, tuning, self.rng)
         self.shared.ai_mode = decision.mode
         self.shared.set_dialogue(decision.message, ttl_s=3.0)
+        self.last_ai_search_stats = decision.search_stats
 
         self.ai_pending_move = decision.move
         self.ai_thinking_until_s = time.perf_counter() + decision.thinking_delay_s
@@ -463,6 +471,7 @@ class PygameApp:
             f"Last sentiment: {self.last_sentiment}",
             f"Difficulty: {ai_mode} Mode",
             f"Assistive mistake prob: {min(0.30, max(0.20, tuning.assistive_mistake_prob)):.2f}",
+            f"Diagnostics: {'ON' if self.show_ai_diagnostics else 'OFF'} (TAB)",
             f"Cameras: {self.shared.camera_status_summary()}",
         ]
         for line in lines:
@@ -475,6 +484,20 @@ class PygameApp:
             typing = self.font_small.render(self.ai_typing, True, self.theme.accent_soft)
             self.screen.blit(typing, (x, y))
             y += 24
+
+        if self.show_ai_diagnostics and self.last_ai_search_stats is not None:
+            diag = self.last_ai_search_stats
+            diag_lines = [
+                f"Search: {diag.algorithm or 'alpha-beta'}",
+                f"Move/value: {diag.best_move} / {diag.best_value}",
+                f"Visited: {diag.nodes_visited}  Leaves: {diag.leaf_nodes}",
+                f"Pruned: {diag.pruned_nodes}  Events: {diag.pruning_events}",
+                f"Depth: {diag.max_depth}  Time: {diag.execution_time_ms:.2f} ms",
+            ]
+            for line in diag_lines:
+                t = self.font_small.render(line, True, self.theme.accent_soft)
+                self.screen.blit(t, (x, y))
+                y += 18
 
         if self.hint_active and self.hint_cell is not None:
             slide = self.hint_slide.step(1.0 / 60.0) if not self.hint_slide.done else 1.0

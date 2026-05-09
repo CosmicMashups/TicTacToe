@@ -5,13 +5,26 @@ This project is a local desktop Tic-Tac-Toe game where the AI opponent and UI ad
 - Webcam facial expression (Happy / Neutral via a mouth-width heuristic)
 - Post-game text feedback sentiment (positive / neutral / negative via TF-IDF and logistic regression)
 
-The human plays **X**; the AI plays **O** and uses **minimax** (`emotion_game_ai/game/minimax.py`) for optimal move evaluation, optionally softened by emotion-driven difficulty (`emotion_game_ai/game/ai_player.py`).
+The human plays **X**; the AI plays **O** and uses **alpha-beta Minimax** (`emotion_game_ai/game/minimax.py`) for optimal move evaluation, optionally softened by emotion-driven difficulty (`emotion_game_ai/game/ai_player.py`).
+
+The project also includes educational AI-search tools:
+
+- Explicit game-tree nodes (`emotion_game_ai/game/game_tree.py`)
+- Plain Minimax vs alpha-beta comparison statistics
+- Pruned branch tracking
+- Intermediate node values and root-value debug output
+- A deterministic four-level demonstration tree for academic inspection
+- A lightweight in-game AI diagnostics overlay toggled with **Tab**
 
 ### Documentation
 
-For an architecture-focused description of current features (board rules, UI flow, multimodal tuning, minimax wiring, and notes for **alpha-beta pruning** and an **explicit game tree**), see:
+For player instructions and educational game-tree examples, see:
 
-[docs/game-features-and-implementation.md](docs/game-features-and-implementation.md)
+[docs/USER_MANUAL.md](docs/USER_MANUAL.md)
+
+For an architecture-focused description of current features (board rules, UI flow, multimodal tuning, minimax wiring, alpha-beta pruning, and explicit game-tree support), see:
+
+[docs/FEATURES.md](docs/FEATURES.md)
 
 ### Setup
 
@@ -24,6 +37,24 @@ NLTK resources are downloaded automatically on first run (cached in your user pr
 ### Run
 
     python main.py
+
+### Gameplay controls
+
+- Click an empty square to place **X**
+- Press **Tab** to show/hide AI search diagnostics
+- Press **C** to cycle camera index
+- Press **Esc** to quit
+- After a match, type feedback and press **Enter** to tune the next game
+
+### Educational search examples
+
+Print the four-level demonstration tree with root and intermediate values:
+
+    python -c "from emotion_game_ai.game.game_tree import generate_demo_tree, print_tree_debug; print(print_tree_debug(generate_demo_tree()))"
+
+Compare plain Minimax with alpha-beta pruning on a sample board:
+
+    python -c "from emotion_game_ai.game.board import Board; from emotion_game_ai.game.minimax import compare_search_algorithms; b=Board(); b.grid=[['X','',''],['','O',''],['','','X']]; print(compare_search_algorithms(b))"
 
 ### Optional: Train the sentiment model
 
