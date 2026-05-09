@@ -15,7 +15,8 @@ The project also includes educational AI-search tools:
 - Intermediate node values and root-value debug output
 - A deterministic four-level demonstration tree for academic inspection
 - A lightweight in-game AI diagnostics overlay toggled with **Tab**
-- Seaborn `rocket` palette game-tree graph exports and in-game graph display
+- Native Pygame live game-tree simulation in the right AI pane
+- Seaborn `rocket` palette game-tree graph exports for reports/manual use
 
 ### Documentation
 
@@ -43,7 +44,8 @@ NLTK resources are downloaded automatically on first run (cached in your user pr
 
 - Click an empty square to place **X**
 - Press **Tab** to show/hide AI search diagnostics
-- Press **G** to generate and display a Seaborn game-tree graph for the current board
+- Press **G** to show/hide the native live game-tree simulation in the right AI pane
+- Press **+** or **-** to change how many game-tree levels are considered
 - Press **C** to cycle camera index
 - Press **Esc** to quit
 - After a match, type feedback and press **Enter** to tune the next game
@@ -65,6 +67,16 @@ Save the four-level demo tree as a Seaborn `rocket` PNG:
 Save a current-board tree graph from a scripted board:
 
     python -c "from emotion_game_ai.game.board import Board; from emotion_game_ai.game.tree_visualization import save_board_tree_graph; b=Board(); b.grid=[['X','',''],['','O',''],['','','X']]; save_board_tree_graph(b, 'data/current_board_tree_graph.png', is_maximizing=True)"
+
+Save a current-board graph by displayed level count:
+
+    python -c "from emotion_game_ai.game.board import Board; from emotion_game_ai.game.tree_visualization import save_board_tree_graph_by_levels; b=Board(); b.grid=[['X','',''],['','O',''],['','','X']]; save_board_tree_graph_by_levels(b, 'data/current_board_tree_graph.png', is_maximizing=True, levels=4)"
+
+Save a compact right-pane graph:
+
+    python -c "from emotion_game_ai.game.board import Board; from emotion_game_ai.game.tree_visualization import save_compact_board_tree_graph_by_levels; b=Board(); b.grid=[['X','',''],['','O',''],['','','X']]; save_compact_board_tree_graph_by_levels(b, 'data/tree_graph_pane.png', is_maximizing=True, levels=3)"
+
+The in-game right-pane tree is rendered directly with Pygame for smoother play. The Seaborn commands above are for exporting static images only.
 
 ### Optional: Train the sentiment model
 

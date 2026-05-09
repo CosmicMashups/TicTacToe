@@ -14,21 +14,11 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from emotion_game_ai.game.board import Board
-from emotion_game_ai.game.game_tree import GameTreeNode, build_game_tree, generate_demo_tree, state_to_board
-from emotion_game_ai.game.minimax import minimax_alpha_beta
-
-
-def build_evaluated_gameplay_tree(
-    board: Board,
-    *,
-    is_maximizing: bool = True,
-    depth_limit: int = 3,
-) -> GameTreeNode:
-    """Build a readable depth-limited tree and propagate Minimax values."""
-
-    root = build_game_tree(board, depth_limit=depth_limit, is_maximizing=is_maximizing)
-    _evaluate_display_tree(root, -math.inf, math.inf)
-    return root
+from emotion_game_ai.game.game_tree import GameTreeNode, generate_demo_tree
+from emotion_game_ai.game.game_tree_evaluation import (
+    build_evaluated_gameplay_tree,
+    build_evaluated_gameplay_tree_by_levels,
+)
 
 
 def save_demo_tree_graph(output_path: str | Path, *, title: str = "Four-Level Alpha-Beta Demo Tree") -> Path:
@@ -51,6 +41,42 @@ def save_board_tree_graph(
     return save_tree_graph(root, output_path, title=title)
 
 
+def save_board_tree_graph_by_levels(
+    board: Board,
+    output_path: str | Path,
+    *,
+    is_maximizing: bool = True,
+    levels: int = 4,
+    title: str = "Current Board Game Tree",
+) -> Path:
+    """Build, evaluate, and save a board tree using displayed level count."""
+
+    root = build_evaluated_gameplay_tree_by_levels(board, is_maximizing=is_maximizing, levels=levels)
+    return save_tree_graph(root, output_path, title=title)
+
+
+def save_compact_board_tree_graph_by_levels(
+    board: Board,
+    output_path: str | Path,
+    *,
+    is_maximizing: bool = True,
+    levels: int = 3,
+    title: str = "",
+) -> Path:
+    """Save a pane-sized board tree graph for the Pygame status panel."""
+
+    root = build_evaluated_gameplay_tree_by_levels(board, is_maximizing=is_maximizing, levels=levels)
+    return save_tree_graph(
+        root,
+        output_path,
+        title=title,
+        figsize=(2.65, 2.15),
+        dpi=130,
+        font_size=5.2,
+        label_mode="compact",
+    )
+
+
 def save_tree_graph(
     root: GameTreeNode,
     output_path: str | Path,
@@ -58,6 +84,8 @@ def save_tree_graph(
     title: str = "Tic-Tac-Toe Game Tree",
     figsize: tuple[float, float] = (15.0, 8.5),
     dpi: int = 160,
+    font_size: float = 7.5,
+    label_mode: str = "full",
 ) -> Path:
     """Render a game tree to a PNG using Seaborn's rocket palette."""
 
@@ -85,69 +113,44 @@ def save_tree_graph(
         x, y = positions[node.node_id]
         color = _node_color(node, palette)
         text_color = "#fff7fb" if not node.pruned else "#f2d7df"
-        ax.text(
-            x,
-            y,
-            _node_label(node),
-            ha="center",
-            va="center",
-            fontsize=7.5,
-            color=text_color,
-            bbox={
-                "boxstyle": "round,pad=0.38",
-                "facecolor": color,
-                "edgecolor": palette[6] if not node.pruned else palette[0],
-                "linewidth": 1.2,
-                "alpha": 0.96 if not node.pruned else 0.55,
-            },
-            zorder=2,
-        )
+        if _should_label(node, label_mode):
+            ax.text(
+                x,
+                y,
+                _node_label(node, label_mode),
+                ha="center",
+                va="center",
+                fontsize=font_size,
+                color=text_color,
+                bbox={
+                    "boxstyle": "round,pad=0.28" if label_mode == "compact" else "round,pad=0.38",
+                    "facecolor": color,
+                    "edgecolor": palette[6] if not node.pruned else palette[0],
+                    "linewidth": 1.0 if label_mode == "compact" else 1.2,
+                    "alpha": 0.96 if not node.pruned else 0.55,
+                },
+                zorder=3,
+            )
+        else:
+            ax.scatter(
+                [x],
+                [y],
+                s=12 if not node.pruned else 8,
+                c=[color],
+                edgecolors=[palette[6] if not node.pruned else palette[0]],
+                linewidths=0.4,
+                alpha=0.9 if not node.pruned else 0.45,
+                zorder=2,
+            )
 
-    ax.set_title(title, color="#fff7fb", fontsize=16, pad=16)
+    if title:
+        ax.set_title(title, color="#fff7fb", fontsize=16 if label_mode == "full" else 7, pad=16 if label_mode == "full" else 4)
     ax.set_axis_off()
     ax.margins(x=0.06, y=0.14)
     plt.tight_layout()
     fig.savefig(output, dpi=dpi, bbox_inches="tight", facecolor=fig.get_facecolor())
     plt.close(fig)
     return output
-
-
-def _evaluate_display_tree(node: GameTreeNode, alpha: float, beta: float) -> int:
-    node.alpha = alpha
-    node.beta = beta
-    if not node.children:
-        value = minimax_alpha_beta(state_to_board(node.board_state), 0, node.is_maximizing, -math.inf, math.inf)
-        node.value = value
-        return value
-
-    if node.is_maximizing:
-        value = -math.inf
-        for idx, child in enumerate(node.children):
-            value = max(value, _evaluate_display_tree(child, alpha, beta))
-            alpha = max(alpha, value)
-            node.alpha = alpha
-            node.value = int(value)
-            if alpha >= beta:
-                _mark_pruned(node.children[idx + 1 :])
-                break
-        return int(value)
-
-    value = math.inf
-    for idx, child in enumerate(node.children):
-        value = min(value, _evaluate_display_tree(child, alpha, beta))
-        beta = min(beta, value)
-        node.beta = beta
-        node.value = int(value)
-        if alpha >= beta:
-            _mark_pruned(node.children[idx + 1 :])
-            break
-    return int(value)
-
-
-def _mark_pruned(nodes: Iterable[GameTreeNode]) -> None:
-    for node in nodes:
-        node.pruned = True
-        _mark_pruned(node.children)
 
 
 def _walk(root: GameTreeNode) -> Iterable[GameTreeNode]:
@@ -172,8 +175,23 @@ def _layered_positions(root: GameTreeNode) -> dict[int, tuple[float, float]]:
     return positions
 
 
-def _node_label(node: GameTreeNode) -> str:
+def _should_label(node: GameTreeNode, label_mode: str) -> bool:
+    if label_mode == "compact":
+        return node.depth <= 1
+    return True
+
+
+def _node_label(node: GameTreeNode, label_mode: str = "full") -> str:
     role = "MAX" if node.is_maximizing else "MIN"
+    if label_mode == "compact":
+        parts = [role]
+        if node.move is not None:
+            parts.append(f"m={node.move}")
+        parts.append(f"v={node.value}")
+        if node.pruned:
+            parts.append("PRUNED")
+        return "\n".join(parts)
+
     parts = [role, f"d={node.depth}"]
     if node.move is not None:
         parts.append(f"m={node.move}")

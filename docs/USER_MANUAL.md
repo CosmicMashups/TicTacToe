@@ -16,7 +16,7 @@ Run the game from the project root:
 python main.py
 ```
 
-The game opens a Pygame desktop window. If the webcam is unavailable, the game still works and falls back to neutral emotion behavior.
+The game opens a Pygame desktop window (default `1600x900`). If the webcam is unavailable, the game still works and falls back to neutral emotion behavior.
 
 ## 2. How To Play
 
@@ -35,7 +35,8 @@ Useful controls:
 | `Esc` | Quit the game |
 | `C` | Cycle camera index |
 | `Tab` | Toggle AI search diagnostics |
-| `G` | Generate and display a Seaborn game-tree graph |
+| `G` | Show or hide the native live game-tree simulation in the right AI pane |
+| `+` / `-` | Increase or decrease the number of tree levels considered |
 | `Enter` | Submit post-game feedback |
 | `Backspace` | Edit post-game feedback |
 
@@ -281,9 +282,16 @@ print(tree_json)
 
 This is useful for reports, notebooks, or visualization experiments.
 
-## 10. Seaborn Game-Tree Graphs
+## 10. Game-Tree Graphs
 
-The project can also render the game tree as a Seaborn/Matplotlib graph using Seaborn's `rocket` palette.
+The game has two graph modes:
+
+- The live right-pane tree is drawn directly with Pygame, so it can update during play without repeatedly generating image files.
+- Seaborn/Matplotlib export is still available for reports, notebooks, and static images.
+
+### Static Seaborn Exports
+
+Use these commands when you want saved images using Seaborn's `rocket` palette.
 
 Save the deterministic four-level demo tree:
 
@@ -303,6 +311,8 @@ Use the Python API directly when writing reports or notebooks:
 from emotion_game_ai.game.board import Board
 from emotion_game_ai.game.tree_visualization import (
     save_board_tree_graph,
+    save_board_tree_graph_by_levels,
+    save_compact_board_tree_graph_by_levels,
     save_demo_tree_graph,
 )
 
@@ -320,6 +330,20 @@ save_board_tree_graph(
     is_maximizing=True,
     depth_limit=3,
 )
+
+save_board_tree_graph_by_levels(
+    board,
+    "data/current_board_tree_graph_4_levels.png",
+    is_maximizing=True,
+    levels=4,
+)
+
+save_compact_board_tree_graph_by_levels(
+    board,
+    "data/tree_graph_pane.png",
+    is_maximizing=True,
+    levels=3,
+)
 ```
 
 The graph labels show:
@@ -331,13 +355,13 @@ The graph labels show:
 - alpha and beta values
 - `PRUNED` marker for skipped branches
 
-During gameplay, press `G` to generate a current-board graph and display it inside the diagnostics overlay. The file is saved to:
+### Native Pygame Live Tree
 
-```text
-data/tree_graph_current.png
-```
+During gameplay, the right AI pane displays a live current-board tree simulation drawn with Pygame primitives. The UI now uses a tree-priority layout: a slimmer webcam panel, a wider right status panel, and a larger tree viewport. Press `G` to show or hide the tree. When live simulation is enabled, the tree refreshes from the actual board after the human move and after the AI move.
 
-The overlay uses the saved PNG, so the game does not redraw Matplotlib every frame.
+Use `+` and `-` while playing to change how many levels the game tree considers. The default right-pane graph uses 3 displayed levels, including the root. The Pygame UI clamps this to a readable range (`2..4`) to keep the graph understandable.
+
+The right pane no longer generates Seaborn images during gameplay. To keep the graph readable, node and edge rendering scale with the available viewport size. The renderer labels at least the root and immediate candidate moves, and can include one deeper labeled level when there is enough space. Pruned branches use muted colors and pruned deeper nodes can be marked with `P`.
 
 ## 11. In-Game Diagnostics
 
@@ -353,6 +377,7 @@ The panel can show:
 - pruning events
 - maximum search depth
 - execution time in milliseconds
-- generated Seaborn game-tree graph after pressing `G`
+- native live game-tree graph in the right pane
+- current tree level count
 
 These diagnostics describe the most recent AI decision. They do not change gameplay behavior.
