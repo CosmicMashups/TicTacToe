@@ -15,6 +15,7 @@ import pygame
 from emotion_game_ai.game.ai_player import decide_move
 from emotion_game_ai.game.board import Board
 from emotion_game_ai.game.search_stats import SearchStats
+from emotion_game_ai.game.tree_visualization import save_board_tree_graph
 from emotion_game_ai.game.renderer import (
     HAPPY_THEME,
     EMOTION_THEMES,
@@ -98,6 +99,9 @@ class PygameApp:
         self.ai_typing_until_s = 0.0
         self.show_ai_diagnostics = False
         self.last_ai_search_stats: Optional[SearchStats] = None
+        self.tree_graph_path = os.path.join("data", "tree_graph_current.png")
+        self.tree_graph_surface: Optional[pygame.Surface] = None
+        self.tree_graph_message = "Press G to generate tree graph."
 
         self.sfx_move = try_load_sound(os.path.join("assets", "sounds", "move.mp3"))
         self.sfx_win = try_load_sound(os.path.join("assets", "sounds", "win.mp3"))
@@ -141,6 +145,9 @@ class PygameApp:
                 self.show_ai_diagnostics = not self.show_ai_diagnostics
                 state = "shown" if self.show_ai_diagnostics else "hidden"
                 self.shared.set_dialogue(f"AI diagnostics {state}.", ttl_s=2.0)
+            if ev.type == pygame.KEYDOWN and ev.key == pygame.K_g:
+                self._generate_tree_graph()
+                continue
 
             if self.scene == "play":
                 if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
@@ -392,6 +399,50 @@ class PygameApp:
 
         if self.scene == "postgame":
             self._draw_postgame_overlay()
+        elif self.show_ai_diagnostics and self.tree_graph_surface is not None:
+            self._draw_tree_graph_overlay(rects["center"])
+
+    def _generate_tree_graph(self) -> None:
+        try:
+            is_maximizing = self.turn == "O"
+            save_board_tree_graph(
+                self.board,
+                self.tree_graph_path,
+                is_maximizing=is_maximizing,
+                depth_limit=3,
+                title=f"Current Board Tree ({'MAX' if is_maximizing else 'MIN'} to move)",
+            )
+            loaded = pygame.image.load(self.tree_graph_path).convert_alpha()
+            self.tree_graph_surface = loaded
+            self.tree_graph_message = f"Tree graph saved to {self.tree_graph_path}"
+            self.show_ai_diagnostics = True
+            self.shared.set_dialogue("Tree graph generated with Seaborn rocket palette.", ttl_s=3.0)
+        except Exception as exc:
+            self.tree_graph_surface = None
+            self.tree_graph_message = f"Tree graph unavailable: {exc}"
+            self.shared.set_dialogue(self.tree_graph_message, ttl_s=4.0)
+
+    def _draw_tree_graph_overlay(self, rect: pygame.Rect) -> None:
+        if self.tree_graph_surface is None:
+            return
+        panel = rect.inflate(-24, -24)
+        panel.height = min(panel.height, 360)
+        panel.bottom = rect.bottom - 12
+
+        pygame.draw.rect(self.screen, pygame.Color(12, 14, 20), panel, border_radius=14)
+        pygame.draw.rect(self.screen, self.theme.accent_soft, panel, width=2, border_radius=14)
+
+        title = self.font_small.render("Seaborn Game Tree Graph (G to refresh)", True, pygame.Color(235, 240, 255))
+        self.screen.blit(title, (panel.left + 12, panel.top + 8))
+
+        image_rect = panel.inflate(-24, -48)
+        image_rect.top = panel.top + 34
+        surf = self.tree_graph_surface
+        scale = min(image_rect.width / surf.get_width(), image_rect.height / surf.get_height())
+        scaled_size = (max(1, int(surf.get_width() * scale)), max(1, int(surf.get_height() * scale)))
+        scaled = pygame.transform.smoothscale(surf, scaled_size)
+        dest = scaled.get_rect(center=image_rect.center)
+        self.screen.blit(scaled, dest)
 
     def _draw_hud(self, rect: pygame.Rect) -> None:
         pygame.draw.rect(self.screen, pygame.Color(0, 0, 0, 80), rect)
@@ -472,6 +523,7 @@ class PygameApp:
             f"Difficulty: {ai_mode} Mode",
             f"Assistive mistake prob: {min(0.30, max(0.20, tuning.assistive_mistake_prob)):.2f}",
             f"Diagnostics: {'ON' if self.show_ai_diagnostics else 'OFF'} (TAB)",
+            "Tree graph: press G to generate",
             f"Cameras: {self.shared.camera_status_summary()}",
         ]
         for line in lines:

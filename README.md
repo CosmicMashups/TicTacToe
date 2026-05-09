@@ -15,6 +15,7 @@ The project also includes educational AI-search tools:
 - Intermediate node values and root-value debug output
 - A deterministic four-level demonstration tree for academic inspection
 - A lightweight in-game AI diagnostics overlay toggled with **Tab**
+- Seaborn `rocket` palette game-tree graph exports and in-game graph display
 
 ### Documentation
 
@@ -42,6 +43,7 @@ NLTK resources are downloaded automatically on first run (cached in your user pr
 
 - Click an empty square to place **X**
 - Press **Tab** to show/hide AI search diagnostics
+- Press **G** to generate and display a Seaborn game-tree graph for the current board
 - Press **C** to cycle camera index
 - Press **Esc** to quit
 - After a match, type feedback and press **Enter** to tune the next game
@@ -55,6 +57,14 @@ Print the four-level demonstration tree with root and intermediate values:
 Compare plain Minimax with alpha-beta pruning on a sample board:
 
     python -c "from emotion_game_ai.game.board import Board; from emotion_game_ai.game.minimax import compare_search_algorithms; b=Board(); b.grid=[['X','',''],['','O',''],['','','X']]; print(compare_search_algorithms(b))"
+
+Save the four-level demo tree as a Seaborn `rocket` PNG:
+
+    python -c "from emotion_game_ai.game.tree_visualization import save_demo_tree_graph; save_demo_tree_graph('data/demo_tree_graph.png')"
+
+Save a current-board tree graph from a scripted board:
+
+    python -c "from emotion_game_ai.game.board import Board; from emotion_game_ai.game.tree_visualization import save_board_tree_graph; b=Board(); b.grid=[['X','',''],['','O',''],['','','X']]; save_board_tree_graph(b, 'data/current_board_tree_graph.png', is_maximizing=True)"
 
 ### Optional: Train the sentiment model
 

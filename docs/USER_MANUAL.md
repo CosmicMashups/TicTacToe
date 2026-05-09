@@ -35,6 +35,7 @@ Useful controls:
 | `Esc` | Quit the game |
 | `C` | Cycle camera index |
 | `Tab` | Toggle AI search diagnostics |
+| `G` | Generate and display a Seaborn game-tree graph |
 | `Enter` | Submit post-game feedback |
 | `Backspace` | Edit post-game feedback |
 
@@ -280,7 +281,65 @@ print(tree_json)
 
 This is useful for reports, notebooks, or visualization experiments.
 
-## 10. In-Game Diagnostics
+## 10. Seaborn Game-Tree Graphs
+
+The project can also render the game tree as a Seaborn/Matplotlib graph using Seaborn's `rocket` palette.
+
+Save the deterministic four-level demo tree:
+
+```powershell
+python -c "from emotion_game_ai.game.tree_visualization import save_demo_tree_graph; save_demo_tree_graph('data/demo_tree_graph.png')"
+```
+
+Save a graph from a scripted board state:
+
+```powershell
+python -c "from emotion_game_ai.game.board import Board; from emotion_game_ai.game.tree_visualization import save_board_tree_graph; b=Board(); b.grid=[['X','',''],['','O',''],['','','X']]; save_board_tree_graph(b, 'data/current_board_tree_graph.png', is_maximizing=True)"
+```
+
+Use the Python API directly when writing reports or notebooks:
+
+```python
+from emotion_game_ai.game.board import Board
+from emotion_game_ai.game.tree_visualization import (
+    save_board_tree_graph,
+    save_demo_tree_graph,
+)
+
+save_demo_tree_graph("data/demo_tree_graph.png")
+
+board = Board()
+board.grid = [
+    ["X", "", ""],
+    ["", "O", ""],
+    ["", "", "X"],
+]
+save_board_tree_graph(
+    board,
+    "data/current_board_tree_graph.png",
+    is_maximizing=True,
+    depth_limit=3,
+)
+```
+
+The graph labels show:
+
+- role: `MAX` or `MIN`
+- depth
+- move that created the node
+- propagated value
+- alpha and beta values
+- `PRUNED` marker for skipped branches
+
+During gameplay, press `G` to generate a current-board graph and display it inside the diagnostics overlay. The file is saved to:
+
+```text
+data/tree_graph_current.png
+```
+
+The overlay uses the saved PNG, so the game does not redraw Matplotlib every frame.
+
+## 11. In-Game Diagnostics
 
 During gameplay, press `Tab` to show or hide AI diagnostics in the right-side status panel.
 
@@ -294,5 +353,6 @@ The panel can show:
 - pruning events
 - maximum search depth
 - execution time in milliseconds
+- generated Seaborn game-tree graph after pressing `G`
 
 These diagnostics describe the most recent AI decision. They do not change gameplay behavior.
