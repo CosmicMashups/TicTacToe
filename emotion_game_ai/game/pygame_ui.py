@@ -36,7 +36,6 @@ from emotion_game_ai.nlp.sentiment_model import SentimentModel
 from emotion_game_ai.nlp.sentiment_model import sentiment_from_emotion
 from emotion_game_ai.utils.threading_utils import SharedState
 
-
 HUD_H = 68
 LEFT_PANEL_RATIO = 0.16
 RIGHT_PANEL_RATIO = 0.40
@@ -44,7 +43,6 @@ MIN_PANEL_W = 210
 MAX_PANEL_W = 800
 BOARD_MIN_SIZE = 420
 BOARD_MAX_SIZE = 700
-
 
 @dataclass
 class CellAnim:
@@ -68,7 +66,6 @@ class PygameApp:
         display_info = pygame.display.Info()
         self.screen_w = display_info.current_w
         self.screen_h = display_info.current_h
-        # Use RESIZABLE to keep window controls
         self.screen = pygame.display.set_mode((self.screen_w - 100, self.screen_h - 100), pygame.SCALED | pygame.RESIZABLE)
         self.clock = pygame.time.Clock()
 
@@ -115,7 +112,6 @@ class PygameApp:
         self.live_tree_graph_enabled = True
         self.tree_graph_message = "Live tree simulation is enabled."
 
-        # Tree View Navigation State
         self.tree_zoom = 1.0
         self.tree_pan = pygame.Vector2(0, 0)
         self.is_panning_tree = False
@@ -156,7 +152,6 @@ class PygameApp:
         board = pygame.Rect(0, 0, board_size, board_size)
         board.center = center.center
 
-        # Rect for the full-screen tree view mode
         full_tree = pygame.Rect(40, HUD_H + 40, window_w - 80, window_h - HUD_H - 80)
         
         return {
@@ -172,7 +167,6 @@ class PygameApp:
             if ev.type == pygame.KEYDOWN:
                 if ev.key == pygame.K_ESCAPE:
                     return False
-                # Switch between play and full tree view
                 if ev.key == pygame.K_v:
                     if self.scene == "play":
                         self.scene = "tree_view"
@@ -182,7 +176,6 @@ class PygameApp:
                         self.shared.set_dialogue("Returned to Game.", ttl_s=2.0)
                     continue
                 
-                # Reset Tree View Pan/Zoom
                 if self.scene == "tree_view" and ev.key == pygame.K_r:
                     self.tree_zoom = 1.0
                     self.tree_pan = pygame.Vector2(0, 0)
@@ -196,7 +189,6 @@ class PygameApp:
                     state = "shown" if self.show_ai_diagnostics else "hidden"
                     self.shared.set_dialogue(f"AI diagnostics {state}.", ttl_s=2.0)
                 
-                # Tree controls
                 if ev.key == pygame.K_g:
                     self.live_tree_graph_enabled = not self.live_tree_graph_enabled
                     if self.live_tree_graph_enabled:
@@ -211,18 +203,15 @@ class PygameApp:
                     self._adjust_tree_graph_levels(-1)
                     continue
 
-            # Scene-specific mouse handling
             if self.scene == "play":
                 if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
                     self._on_click(pygame.mouse.get_pos())
             
             elif self.scene == "tree_view":
-                # Scroll to Zoom
                 if ev.type == pygame.MOUSEWHEEL:
                     zoom_speed = 0.1
                     self.tree_zoom = max(0.2, min(8.0, self.tree_zoom + ev.y * zoom_speed))
                 
-                # Drag to Pan
                 if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
                     self.is_panning_tree = True
                 if ev.type == pygame.MOUSEBUTTONUP and ev.button == 1:
@@ -742,7 +731,6 @@ class PygameApp:
         positions = self._tree_node_positions(root, inner)
         nodes = self._walk_tree_nodes(root)
         
-        # Scale nodes and edges relative to the current drawing rectangle width
         node_scale = (rect.width / 800.0) if is_expanded else (rect.width / 400.0)
         node_scale = max(0.4, min(4.0, node_scale))
         
