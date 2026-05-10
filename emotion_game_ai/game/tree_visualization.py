@@ -23,7 +23,6 @@ from emotion_game_ai.game.game_tree_evaluation import (
 
 def save_demo_tree_graph(output_path: str | Path, *, title: str = "Four-Level Alpha-Beta Demo Tree") -> Path:
     """Save the deterministic four-level demo tree as a Seaborn-styled PNG."""
-
     return save_tree_graph(generate_demo_tree(), output_path, title=title)
 
 
@@ -36,7 +35,6 @@ def save_board_tree_graph(
     title: str = "Current Board Game Tree",
 ) -> Path:
     """Build, evaluate, and save a current-board tree graph."""
-
     root = build_evaluated_gameplay_tree(board, is_maximizing=is_maximizing, depth_limit=depth_limit)
     return save_tree_graph(root, output_path, title=title)
 
@@ -50,7 +48,6 @@ def save_board_tree_graph_by_levels(
     title: str = "Current Board Game Tree",
 ) -> Path:
     """Build, evaluate, and save a board tree using displayed level count."""
-
     root = build_evaluated_gameplay_tree_by_levels(board, is_maximizing=is_maximizing, levels=levels)
     return save_tree_graph(root, output_path, title=title)
 
@@ -64,7 +61,6 @@ def save_compact_board_tree_graph_by_levels(
     title: str = "",
 ) -> Path:
     """Save a pane-sized board tree graph for the Pygame status panel."""
-
     root = build_evaluated_gameplay_tree_by_levels(board, is_maximizing=is_maximizing, levels=levels)
     return save_tree_graph(
         root,
@@ -88,7 +84,6 @@ def save_tree_graph(
     label_mode: str = "full",
 ) -> Path:
     """Render a game tree to a PNG using Seaborn's rocket palette."""
-
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
 
@@ -103,13 +98,16 @@ def save_tree_graph(
 
     for node in nodes:
         for child in node.children:
-            x1, y1 = positions[node.node_id]
-            x2, y2 = positions[child.node_id]
-            edge_color = palette[1] if child.pruned else palette[4]
-            alpha = 0.35 if child.pruned else 0.85
-            ax.plot([x1, x2], [y1, y2], color=edge_color, linewidth=1.4, alpha=alpha, zorder=1)
+            if node.node_id in positions and child.node_id in positions:
+                x1, y1 = positions[node.node_id]
+                x2, y2 = positions[child.node_id]
+                edge_color = palette[1] if child.pruned else palette[4]
+                alpha = 0.35 if child.pruned else 0.85
+                ax.plot([x1, x2], [y1, y2], color=edge_color, linewidth=1.4, alpha=alpha, zorder=1)
 
     for node in nodes:
+        if node.node_id not in positions:
+            continue
         x, y = positions[node.node_id]
         color = _node_color(node, palette)
         text_color = "#fff7fb" if not node.pruned else "#f2d7df"
@@ -154,24 +152,37 @@ def save_tree_graph(
 
 
 def _walk(root: GameTreeNode) -> Iterable[GameTreeNode]:
+    """Helper to traverse the tree nodes."""
     yield root
     for child in root.children:
         yield from _walk(child)
 
 
 def _layered_positions(root: GameTreeNode) -> dict[int, tuple[float, float]]:
+    """Calculate (x, y) coordinates for each node in a layered tree layout."""
     levels: dict[int, list[GameTreeNode]] = {}
-    for node in _walk(root):
+    
+    def collect_levels(node: GameTreeNode):
         levels.setdefault(node.depth, []).append(node)
-
+        for child in node.children:
+            collect_levels(child)
+            
+    collect_levels(root)
+    
     positions: dict[int, tuple[float, float]] = {}
-    max_depth = max(levels) if levels else 0
+    max_depth = max(levels.keys()) if levels else 0
+    
     for depth, nodes in levels.items():
-        width = max(1, len(nodes) - 1)
-        y = float(max_depth - depth)
+        count = len(nodes)
+        y = 1.0 - (depth / max_depth) if max_depth > 0 else 0.5
+        
         for idx, node in enumerate(nodes):
-            x = 0.5 if len(nodes) == 1 else idx / width
+            if count == 1:
+                x = 0.5
+            else:
+                x = 0.1 + (idx / (count - 1)) * 0.8
             positions[node.node_id] = (x, y)
+            
     return positions
 
 
@@ -218,6 +229,9 @@ def _format_bound(value: float) -> str:
         return "inf"
     if value == -math.inf:
         return "-inf"
-    if float(value).is_integer():
-        return str(int(value))
-    return f"{value:.2f}"
+    try:
+        if float(value).is_integer():
+            return str(int(value))
+        return f"{value:.2f}"
+    except (ValueError, TypeError):
+        return str(value)

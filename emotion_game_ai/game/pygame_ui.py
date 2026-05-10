@@ -1,4 +1,4 @@
-"""Modern Pygame UI for the Emotion-Aware Tic-Tac-Toe game."""
+"""Modern Pygame UI for the Emotion-Aware Tic-Tac-Toe game with Zoomable/Pannable Tree View."""
 
 from __future__ import annotations
 
@@ -37,14 +37,13 @@ from emotion_game_ai.nlp.sentiment_model import sentiment_from_emotion
 from emotion_game_ai.utils.threading_utils import SharedState
 
 
-WINDOW_W, WINDOW_H = 1280, 720
 HUD_H = 68
 LEFT_PANEL_RATIO = 0.16
 RIGHT_PANEL_RATIO = 0.40
 MIN_PANEL_W = 210
-MAX_PANEL_W = 520
+MAX_PANEL_W = 800
 BOARD_MIN_SIZE = 420
-BOARD_MAX_SIZE = 620
+BOARD_MAX_SIZE = 700
 
 
 @dataclass
@@ -66,7 +65,11 @@ class PygameApp:
 
         pygame.init()
         pygame.display.set_caption("Emotion-Aware Tic-Tac-Toe")
-        self.screen = pygame.display.set_mode((WINDOW_W, WINDOW_H))
+        display_info = pygame.display.Info()
+        self.screen_w = display_info.current_w
+        self.screen_h = display_info.current_h
+        # Use RESIZABLE to keep window controls
+        self.screen = pygame.display.set_mode((self.screen_w - 100, self.screen_h - 100), pygame.SCALED | pygame.RESIZABLE)
         self.clock = pygame.time.Clock()
 
         self.font_title = pygame.font.SysFont("segoe ui", 28, bold=True)
@@ -112,11 +115,16 @@ class PygameApp:
         self.live_tree_graph_enabled = True
         self.tree_graph_message = "Live tree simulation is enabled."
 
+        # Tree View Navigation State
+        self.tree_zoom = 1.0
+        self.tree_pan = pygame.Vector2(0, 0)
+        self.is_panning_tree = False
+
         self.sfx_move = try_load_sound(os.path.join("assets", "sounds", "move.mp3"))
         self.sfx_win = try_load_sound(os.path.join("assets", "sounds", "win.mp3"))
         self.sfx_click = try_load_sound(os.path.join("assets", "sounds", "click.mp3"))
 
-        self.scene = "play"  # "play" | "postgame"
+        self.scene = "play"  # "play" | "postgame" | "tree_view"
         self.feedback_text = ""
         self.last_sentiment = "neutral"
         self.postgame_message = ""
@@ -147,22 +155,48 @@ class PygameApp:
         board_size = max(BOARD_MIN_SIZE, min(BOARD_MAX_SIZE, board_size))
         board = pygame.Rect(0, 0, board_size, board_size)
         board.center = center.center
-        return {"hud": hud, "left": left, "right": right, "center": center, "board": board}
+
+        # Rect for the full-screen tree view mode
+        full_tree = pygame.Rect(40, HUD_H + 40, window_w - 80, window_h - HUD_H - 80)
+        
+        return {
+            "hud": hud, "left": left, "right": right, 
+            "center": center, "board": board, "full_tree": full_tree
+        }
 
     def _handle_events(self) -> bool:
         for ev in pygame.event.get():
             if ev.type == pygame.QUIT:
                 return False
-            if ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
-                return False
-            if ev.type == pygame.KEYDOWN and ev.key == pygame.K_c:
-                idx = self.shared.request_next_camera()
-                self.shared.set_dialogue(f"Switching camera to index {idx} (press C to cycle).", ttl_s=2.5)
-            if ev.type == pygame.KEYDOWN and ev.key == pygame.K_TAB:
-                self.show_ai_diagnostics = not self.show_ai_diagnostics
-                state = "shown" if self.show_ai_diagnostics else "hidden"
-                self.shared.set_dialogue(f"AI diagnostics {state}.", ttl_s=2.0)
-            if ev.type == pygame.KEYDOWN and self.scene == "play":
+            
+            if ev.type == pygame.KEYDOWN:
+                if ev.key == pygame.K_ESCAPE:
+                    return False
+                # Switch between play and full tree view
+                if ev.key == pygame.K_v:
+                    if self.scene == "play":
+                        self.scene = "tree_view"
+                        self.shared.set_dialogue("Switched to Full Tree View.", ttl_s=2.0)
+                    elif self.scene == "tree_view":
+                        self.scene = "play"
+                        self.shared.set_dialogue("Returned to Game.", ttl_s=2.0)
+                    continue
+                
+                # Reset Tree View Pan/Zoom
+                if self.scene == "tree_view" and ev.key == pygame.K_r:
+                    self.tree_zoom = 1.0
+                    self.tree_pan = pygame.Vector2(0, 0)
+                    continue
+
+                if ev.key == pygame.K_c:
+                    idx = self.shared.request_next_camera()
+                    self.shared.set_dialogue(f"Switching camera to index {idx} (press C to cycle).", ttl_s=2.5)
+                if ev.key == pygame.K_TAB:
+                    self.show_ai_diagnostics = not self.show_ai_diagnostics
+                    state = "shown" if self.show_ai_diagnostics else "hidden"
+                    self.shared.set_dialogue(f"AI diagnostics {state}.", ttl_s=2.0)
+                
+                # Tree controls
                 if ev.key == pygame.K_g:
                     self.live_tree_graph_enabled = not self.live_tree_graph_enabled
                     if self.live_tree_graph_enabled:
@@ -177,10 +211,26 @@ class PygameApp:
                     self._adjust_tree_graph_levels(-1)
                     continue
 
+            # Scene-specific mouse handling
             if self.scene == "play":
                 if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
                     self._on_click(pygame.mouse.get_pos())
-            else:
+            
+            elif self.scene == "tree_view":
+                # Scroll to Zoom
+                if ev.type == pygame.MOUSEWHEEL:
+                    zoom_speed = 0.1
+                    self.tree_zoom = max(0.2, min(8.0, self.tree_zoom + ev.y * zoom_speed))
+                
+                # Drag to Pan
+                if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+                    self.is_panning_tree = True
+                if ev.type == pygame.MOUSEBUTTONUP and ev.button == 1:
+                    self.is_panning_tree = False
+                if ev.type == pygame.MOUSEMOTION and self.is_panning_tree:
+                    self.tree_pan += pygame.Vector2(ev.rel)
+
+            elif self.scene == "postgame":
                 self._handle_postgame_input(ev)
         return True
 
@@ -193,11 +243,9 @@ class PygameApp:
             sentiment = sentiment_from_emotion(emotion)
             self.last_sentiment = sentiment
 
-            # Keep legacy sentiment tuning alongside full behavior profile.
             _, _, _, tuning, _ = self.shared.get_snapshot()
             tuning.adjust_for_sentiment(sentiment)
 
-            # UI/system feedback
             behavior = self.shared.last_behavior
             self.shared.set_dialogue(behavior.system_message, ttl_s=4.0)
             self._emit_ui_effect(behavior.ui_effect)
@@ -231,11 +279,9 @@ class PygameApp:
         if self.sfx_move:
             self.sfx_move.play()
 
-        # Per-turn analytics emotion sampling
         emotion, _, stats, _, _ = self.shared.get_snapshot()
         stats.record_emotion(emotion)
 
-        # Good move highlight heuristic: center move
         if (r, c) == (1, 1):
             self.particles.burst(board_rect.center, self._confetti_palette(emotion), count=18)
 
@@ -308,7 +354,6 @@ class PygameApp:
         self.hint_active = False
         self.hint_cell = None
         self.scene = "play"
-        # Apply post-game NLP theme preference (if any).
         self._set_theme_target(self.shared.current_emotion)
         self._refresh_tree_graph_if_live()
 
@@ -350,7 +395,6 @@ class PygameApp:
         if self.scene != "play" or self.turn != "X" or self.board.game_over():
             return
         if emotion == "Neutral":
-            # Count player turns spent neutral.
             self.neutral_player_turns = min(99, self.neutral_player_turns + 1)
         else:
             self.neutral_player_turns = 0
@@ -373,9 +417,7 @@ class PygameApp:
         return None
 
     def _set_theme_target(self, emotion: str) -> None:
-        # Primary theme from vision emotion (Happy/Neutral).
         target = HAPPY_THEME if emotion == "Happy" else NEUTRAL_THEME
-        # Optional override from post-game NLP behavior mapping.
         try:
             ui_theme = self.shared.last_behavior.ui_theme
         except Exception:
@@ -400,7 +442,6 @@ class PygameApp:
             palette = [pygame.Color(255, 255, 255), pygame.Color(200, 220, 255)]
             self.particles.burst(center, palette, count=24)
         elif eff in {"calm_bg", "calming_overlay", "slow_fade", "subtle_pulse", "supportive_theme", "dynamic_lighting", "board_glow"}:
-            # These are represented mostly via theme + a small accent burst.
             palette = [self.theme.accent_soft, self.theme.accent]
             self.particles.burst(center, palette, count=18)
 
@@ -423,13 +464,52 @@ class PygameApp:
         draw_vertical_gradient(self.screen, self.screen.get_rect(), self.theme.bg_top, self.theme.bg_bottom)
 
         self._draw_hud(rects["hud"])
-        self._draw_webcam_panel(rects["left"])
-        self._draw_status_panel(rects["right"])
-        self._draw_board(rects["board"])
+
+        if self.scene == "play" or self.scene == "postgame":
+            self._draw_webcam_panel(rects["left"])
+            self._draw_status_panel(rects["right"])
+            self._draw_board(rects["board"])
+            if self.scene == "postgame":
+                self._draw_postgame_overlay()
+        elif self.scene == "tree_view":
+            self._draw_full_tree_view(rects["full_tree"])
+
         self.particles.draw(self.screen)
 
-        if self.scene == "postgame":
-            self._draw_postgame_overlay()
+    def _draw_full_tree_view(self, rect: pygame.Rect) -> None:
+        """Draw a large version of the game tree with zoom and pan functionality."""
+        pygame.draw.rect(self.screen, pygame.Color(18, 22, 30, 230), rect, border_radius=18)
+        pygame.draw.rect(self.screen, self.theme.accent_soft, rect, width=2, border_radius=18)
+        
+        # Define the visible area (viewport) inside the main panel
+        viewport = rect.inflate(-40, -40)
+        
+        # Set a clip to prevent the tree from drawing outside the viewport
+        old_clip = self.screen.get_clip()
+        self.screen.set_clip(viewport)
+        
+        if self.tree_graph_root and self.live_tree_graph_enabled:
+            # Create a virtual canvas size based on zoom
+            v_w = viewport.width * self.tree_zoom
+            v_h = viewport.height * self.tree_zoom
+            
+            # The virtual canvas is centered at the viewport center + pan offset
+            v_rect = pygame.Rect(0, 0, int(v_w), int(v_h))
+            v_rect.center = viewport.center + self.tree_pan
+            
+            self._draw_native_tree_graph(v_rect, self.tree_graph_root, is_expanded=True)
+        else:
+            msg = "Tree data unavailable. Press G to toggle live view."
+            txt = self.font_ui.render(msg, True, pygame.Color(170, 180, 200))
+            self.screen.blit(txt, txt.get_rect(center=rect.center))
+
+        # Reset clip to draw UI elements
+        self.screen.set_clip(old_clip)
+
+        # Help navigation text
+        nav_help = "Left Click & Drag: Pan  |  Scroll: Zoom  |  'R': Reset View  |  'V': Return to Game"
+        hint = self.font_small.render(nav_help, True, self.theme.accent_soft)
+        self.screen.blit(hint, (rect.left + 20, rect.bottom - 30))
 
     def _refresh_tree_cache(self, notify: bool = True) -> None:
         try:
@@ -503,7 +583,6 @@ class PygameApp:
         header = self.font_ui.render("WEBCAM FEED", True, pygame.Color(235, 240, 255))
         self.screen.blit(header, (inner.left, inner.top))
 
-        # Reserve the lower portion of the panel for camera diagnostics text.
         preview_height = int(inner.height * 0.42)
         preview_rect = pygame.Rect(inner.left, inner.top + 24, inner.width, max(40, preview_height))
         if isinstance(vision.preview_rgb, np.ndarray):
@@ -656,7 +735,7 @@ class PygameApp:
 
         controls_rect = pygame.Rect(x, graph_rect.bottom + 5, rect.width - 20, 18)
         self._draw_wrapped_text(
-            "G toggle   +/- levels",
+            "G toggle   +/- levels   V expand",
             self.font_small,
             pygame.Color(150, 160, 180),
             controls_rect,
@@ -664,14 +743,18 @@ class PygameApp:
         )
         return graph_rect.bottom + 22
 
-    def _draw_native_tree_graph(self, rect: pygame.Rect, root: GameTreeNode) -> None:
-        inner = rect.inflate(-8, -10)
+    def _draw_native_tree_graph(self, rect: pygame.Rect, root: GameTreeNode, is_expanded: bool = False) -> None:
+        inner = rect.inflate(-20, -20)
         positions = self._tree_node_positions(root, inner)
         nodes = self._walk_tree_nodes(root)
-        node_scale = max(1.0, min(inner.width, inner.height) / 220.0)
-        edge_width = max(1, int(1.2 * node_scale))
-        major_radius = max(5, int(5 * node_scale))
-        minor_radius = max(3, int(3 * node_scale))
+        
+        # Scale nodes and edges relative to the current drawing rectangle width
+        node_scale = (rect.width / 800.0) if is_expanded else (rect.width / 400.0)
+        node_scale = max(0.4, min(4.0, node_scale))
+        
+        edge_width = max(1, int(1.5 * node_scale))
+        major_radius = max(6, int(8 * node_scale))
+        minor_radius = max(3, int(5 * node_scale))
 
         for node in nodes:
             for child in node.children:
@@ -693,10 +776,10 @@ class PygameApp:
             pygame.draw.circle(self.screen, color, pos, radius)
             pygame.draw.circle(self.screen, pygame.Color(235, 210, 230), pos, radius, width=1)
 
-            max_labeled_depth = 2 if inner.width >= 360 else 1
+            max_labeled_depth = 3 if is_expanded and self.tree_zoom > 1.2 else (2 if inner.width >= 360 else 1)
             if node.depth <= max_labeled_depth:
-                self._draw_tree_node_label(node, pos)
-            elif node.pruned and node.depth == 2:
+                self._draw_tree_node_label(node, pos, is_expanded)
+            elif node.pruned:
                 mark = self.font_tree.render("P", True, pygame.Color(190, 170, 185))
                 self.screen.blit(mark, (pos[0] + 4, pos[1] - 8))
 
@@ -705,7 +788,7 @@ class PygameApp:
         for node in self._walk_tree_nodes(root):
             levels.setdefault(node.depth, []).append(node)
 
-        max_depth = max(levels) if levels else 0
+        max_depth = max(levels) if levels else 1
         positions: dict[int, tuple[int, int]] = {}
         for depth, nodes in levels.items():
             y = rect.top + rect.height // 2 if max_depth == 0 else rect.top + int(depth * rect.height / max_depth)
@@ -714,8 +797,9 @@ class PygameApp:
                 if count == 1:
                     x = rect.centerx
                 else:
-                    x = rect.left + int(idx * rect.width / max(1, count - 1))
-                    x = max(rect.left + 6, min(rect.right - 6, x))
+                    margin = rect.width * 0.05
+                    usable_w = rect.width - (2 * margin)                    
+                    x = rect.left + margin + int(idx * usable_w / (count - 1))
                 positions[node.node_id] = (x, y)
         return positions
 
@@ -734,17 +818,20 @@ class PygameApp:
             return pygame.Color(220, 95, 150)
         return pygame.Color(130, 95, 185)
 
-    def _draw_tree_node_label(self, node: GameTreeNode, pos: tuple[int, int]) -> None:
+    def _draw_tree_node_label(self, node: GameTreeNode, pos: tuple[int, int], is_expanded: bool = False) -> None:
         role = "MAX" if node.is_maximizing else "MIN"
         if node.depth == 0:
             text = f"{role} v{node.value}"
         else:
             move_txt = node.move if node.move is not None else "-"
             text = f"{move_txt} v{node.value}"
-        label = self.font_tree.render(text, True, pygame.Color(245, 235, 250))
+        
+        font = self.font_ui if is_expanded else self.font_tree
+        label = font.render(text, True, pygame.Color(245, 235, 250))
         box = label.get_rect()
-        box.center = (pos[0], pos[1] - 16)
-        box.inflate_ip(6, 2)
+        box.center = (pos[0], pos[1] - (24 if is_expanded else 16))
+        box.inflate_ip(8, 4)
+        
         pygame.draw.rect(self.screen, pygame.Color(34, 24, 42), box, border_radius=5)
         pygame.draw.rect(self.screen, pygame.Color(100, 70, 120), box, width=1, border_radius=5)
         self.screen.blit(label, label.get_rect(center=box.center))
@@ -773,14 +860,12 @@ class PygameApp:
         pygame.draw.rect(self.screen, pygame.Color(22, 26, 36), rect2, border_radius=18)
         pygame.draw.rect(self.screen, self.theme.accent_soft, rect2, width=2, border_radius=18)
 
-        # Grid
         for i in range(1, 3):
             x = rect2.left + i * rect2.width // 3
             pygame.draw.line(self.screen, pygame.Color(60, 70, 90), (x, rect2.top + grid_inset), (x, rect2.bottom - grid_inset), grid_width)
             y = rect2.top + i * rect2.height // 3
             pygame.draw.line(self.screen, pygame.Color(60, 70, 90), (rect2.left + grid_inset, y), (rect2.right - grid_inset, y), grid_width)
 
-        # Hover highlight
         if self.scene == "play" and self.turn == "X" and not self.board.game_over():
             mx, my = pygame.mouse.get_pos()
             if rect2.collidepoint((mx, my)):
@@ -790,12 +875,10 @@ class PygameApp:
                     col = self.theme.accent if emotion == "Happy" else self.theme.accent_soft
                     self._draw_cell_glow(cell_rect, col)
 
-        # Hint highlight
         if self.hint_active and self.hint_cell is not None:
             cell_rect = self._cell_rect(self.hint_cell, rect2)
             self._draw_cell_glow(cell_rect, self.theme.accent_soft)
 
-        # Pieces
         now_s = time.perf_counter()
         for r in range(3):
             for c in range(3):
@@ -820,7 +903,6 @@ class PygameApp:
                     pr.center = cell_rect.center
                     pygame.draw.rect(self.screen, pygame.Color(255, 255, 255, 0), pr, border_radius=12)
 
-        # Win line highlight
         if self.win_line:
             pts = [self._cell_rect(cell, rect2).center for cell in self.win_line]
             pygame.draw.line(self.screen, self.theme.accent, pts[0], pts[-1], win_width)
@@ -865,7 +947,6 @@ class PygameApp:
         hint = self.font_small.render("Press Enter to submit and start next match.", True, pygame.Color(170, 180, 200))
         self.screen.blit(hint, (box.left + 24, box.bottom - 34))
 
-        # Stats summary
         dist = stats.emotion_counts
         total = max(1, dist.get("Happy", 0) + dist.get("Neutral", 0))
         h_pct = int(100 * dist.get("Happy", 0) / total)
@@ -912,7 +993,6 @@ class PygameApp:
         c = (rect.left + pad, rect.bottom - pad)
         d = (rect.right - pad, rect.top + pad)
 
-        # Two-stroke animation
         if t < 0.5:
             tt = ease_in_cubic(t / 0.5)
             p = (int(a[0] + (b[0] - a[0]) * tt), int(a[1] + (b[1] - a[1]) * tt))
@@ -950,7 +1030,6 @@ class PygameApp:
 
     @staticmethod
     def _rgb_to_surface(rgb: np.ndarray) -> pygame.Surface:
-        # pygame.surfarray expects (w, h, 3)
         arr = np.transpose(rgb, (1, 0, 2))
         return pygame.surfarray.make_surface(arr)
 
@@ -976,7 +1055,6 @@ class PygameApp:
                 lines.append(current)
                 current = word
             else:
-                # Hard-wrap long single tokens.
                 chunk = word
                 while chunk and font.size(chunk)[0] > rect.width:
                     split_idx = max(1, len(chunk) - 1)
@@ -998,4 +1076,3 @@ class PygameApp:
             self.screen.blit(surf, (rect.left, y))
             y += line_h + line_spacing
         return y
-
