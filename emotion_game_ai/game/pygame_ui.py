@@ -481,19 +481,15 @@ class PygameApp:
         pygame.draw.rect(self.screen, pygame.Color(18, 22, 30, 230), rect, border_radius=18)
         pygame.draw.rect(self.screen, self.theme.accent_soft, rect, width=2, border_radius=18)
         
-        # Define the visible area (viewport) inside the main panel
         viewport = rect.inflate(-40, -40)
         
-        # Set a clip to prevent the tree from drawing outside the viewport
         old_clip = self.screen.get_clip()
         self.screen.set_clip(viewport)
         
         if self.tree_graph_root and self.live_tree_graph_enabled:
-            # Create a virtual canvas size based on zoom
             v_w = viewport.width * self.tree_zoom
             v_h = viewport.height * self.tree_zoom
             
-            # The virtual canvas is centered at the viewport center + pan offset
             v_rect = pygame.Rect(0, 0, int(v_w), int(v_h))
             v_rect.center = viewport.center + self.tree_pan
             
@@ -503,10 +499,8 @@ class PygameApp:
             txt = self.font_ui.render(msg, True, pygame.Color(170, 180, 200))
             self.screen.blit(txt, txt.get_rect(center=rect.center))
 
-        # Reset clip to draw UI elements
         self.screen.set_clip(old_clip)
 
-        # Help navigation text
         nav_help = "Left Click & Drag: Pan  |  Scroll: Zoom  |  'R': Reset View  |  'V': Return to Game"
         hint = self.font_small.render(nav_help, True, self.theme.accent_soft)
         self.screen.blit(hint, (rect.left + 20, rect.bottom - 30))
